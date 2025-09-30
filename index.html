@@ -1,139 +1,159 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>21-Day Interactive Calendar</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#4CAF50">
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    .day { border: 1px solid #ccc; padding: 10px; margin: 5px; display: inline-block; width: 120px; text-align: center; cursor: pointer; vertical-align: top; }
-    .done { background: #c8e6c9; }
-    .skipped { background: #ffcdd2; }
-    textarea { width: 100%; height: 40px; margin-top: 5px; }
-    .controls { margin: 15px 0; }
-    progress { width: 100%; height: 20px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>21-Day Interactive Calendar</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4CAF50">
+<style>
+body { font-family: Arial, sans-serif; padding: 20px; }
+.day { border: 1px solid #ccc; padding: 10px; margin: 5px; display: inline-block; width: 120px; text-align: center; cursor: pointer; vertical-align: top; }
+.done { background: #c8e6c9; }
+.skipped { background: #ffcdd2; }
+textarea { width: 100%; height: 40px; margin-top: 5px; }
+.controls { margin: 15px 0; }
+progress { width: 100%; height: 20px; }
+</style>
 </head>
 <body>
-  <h1>21-Day Interactive Calendar</h1>
+<h1>21-Day Interactive Calendar</h1>
 
-  <div class="controls">
-    <label for="startDate">Start Date: </label>
-    <input type="date" id="startDate">
-    <button onclick="applyStartDate()">Apply</button>
-    <button onclick="resetCalendar()">Reset</button>
-    <button onclick="undoLast()">Undo Last</button>
-    <button onclick="undoAll()">Undo All</button>
-  </div>
+<div class="controls">
+  <label for="startDate">Start Date: </label>
+  <input type="date" id="startDate">
+  <button onclick="applyStartDate()">Apply</button>
+  <button onclick="resetCalendar()">Reset</button>
+  <button onclick="undoLast()">Undo Last</button>
+  <button onclick="undoAll()">Undo All</button>
+</div>
 
-  <progress id="progressBar" value="0" max="21"></progress>
-  <p id="progressText">0 / 21 days completed</p>
+<progress id="progressBar" value="0" max="21"></progress>
+<p id="progressText">0 / 21 days completed</p>
 
-  <div id="calendar"></div>
+<div id="calendar"></div>
 
-  <script>
-    let calendar = document.getElementById('calendar');
-    let progressBar = document.getElementById('progressBar');
-    let progressText = document.getElementById('progressText');
-    let completedDays = 0;
-    let history = [];
-    let startDate = null;
+<script>
+let calendar = document.getElementById('calendar');
+let progressBar = document.getElementById('progressBar');
+let progressText = document.getElementById('progressText');
+let completedDays = 0;
+let history = [];
+let startDate = null;
+const DAYS = 21;
 
-    function buildCalendar() {
-      calendar.innerHTML = '';
-      for (let i = 1; i <= 21; i++) {
-        const div = document.createElement('div');
-        div.className = 'day';
-        div.innerHTML = `<strong>Day ${i}</strong><br><span class="dateLabel"></span><br>`;
-        
-        // Notes section
-        const note = document.createElement('textarea');
-        note.placeholder = 'Add note...';
-        div.appendChild(note);
+function todayISO(){ const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
 
-        div.onclick = (e) => {
-          if (e.target.tagName === 'TEXTAREA') return; // don’t toggle if clicking note
-          if (div.classList.contains('done')) {
-            div.className = 'day skipped';
-            completedDays--;
-            history.push({ action: 'skip', element: div });
-          } else if (div.classList.contains('skipped')) {
-            div.className = 'day';
-            history.push({ action: 'reset', element: div });
-          } else {
-            div.className = 'day done';
-            completedDays++;
-            history.push({ action: 'done', element: div });
-          }
-          updateProgress();
-        };
+function buildCalendar() {
+  calendar.innerHTML = '';
+  for (let i = 0; i < DAYS; i++) {
+    const div = document.createElement('div');
+    div.className = 'day';
+    div.innerHTML = `<strong>Day ${i+1}</strong><br><span class="dateLabel"></span><br>`;
+    
+    const note = document.createElement('textarea');
+    note.placeholder = 'Add note...';
+    note.addEventListener('input', saveState);
+    div.appendChild(note);
 
-        calendar.appendChild(div);
-      }
-      updateDates();
+    div.onclick = (e) => {
+      if (e.target.tagName === 'TEXTAREA') return;
+      if (div.classList.contains('done')) { div.className='day skipped'; completedDays--; history.push({action:'skip',element:div}); }
+      else if (div.classList.contains('skipped')) { div.className='day'; history.push({action:'reset',element:div}); }
+      else { div.className='day done'; completedDays++; history.push({action:'done',element:div}); }
       updateProgress();
-    }
+      saveState();
+    };
 
-    function updateProgress() {
-      if (completedDays < 0) completedDays = 0;
-      progressBar.value = completedDays;
-      progressText.textContent = completedDays + ' / 21 days completed';
-    }
+    calendar.appendChild(div);
+  }
+  updateDates();
+  loadState();
+}
 
-    function resetCalendar() {
-      completedDays = 0;
-      history = [];
-      buildCalendar();
-    }
+function updateDates() {
+  if (!startDate) return;
+  const days = document.querySelectorAll('.day .dateLabel');
+  for (let i=0;i<days.length;i++){
+    const d = new Date(startDate);
+    d.setDate(d.getDate()+i);
+    days[i].textContent = d.toDateString();
+  }
+}
 
-    function undoLast() {
-      const last = history.pop();
-      if (!last) return;
-      if (last.action === 'done') {
-        last.element.className = 'day';
-        completedDays--;
-      } else if (last.action === 'skip') {
-        last.element.className = 'day done';
-        completedDays++;
-      } else if (last.action === 'reset') {
-        last.element.className = 'day skipped';
-      }
-      updateProgress();
-    }
+function updateProgress() {
+  if (completedDays<0) completedDays=0;
+  progressBar.value = completedDays;
+  progressText.textContent = completedDays+' / '+DAYS+' days completed';
+}
 
-    function undoAll() {
-      history = [];
-      completedDays = 0;
-      const days = document.querySelectorAll('.day');
-      days.forEach(d => d.className = 'day');
-      updateProgress();
-    }
+function resetCalendar() {
+  if (!confirm('Reset calendar? All progress and notes will be cleared.')) return;
+  completedDays=0;
+  history=[];
+  startDate = new Date(document.getElementById('startDate').value || todayISO());
+  const days = document.querySelectorAll('.day');
+  days.forEach(d=>{d.className='day'; d.querySelector('textarea').value='';});
+  updateProgress();
+  saveState();
+}
 
-    function applyStartDate() {
-      const dateInput = document.getElementById('startDate').value;
-      if (dateInput) {
-        startDate = new Date(dateInput);
-        updateDates();
-      }
-    }
+function undoLast() {
+  const last = history.pop();
+  if (!last) return;
+  if(last.action==='done'){ last.element.className='day'; completedDays--; }
+  else if(last.action==='skip'){ last.element.className='day done'; completedDays++; }
+  else if(last.action==='reset'){ last.element.className='day skipped'; }
+  updateProgress();
+  saveState();
+}
 
-    function updateDates() {
-      if (!startDate) return;
-      const days = document.querySelectorAll('.day .dateLabel');
-      for (let i = 0; i < days.length; i++) {
-        const d = new Date(startDate);
-        d.setDate(d.getDate() + i);
-        days[i].textContent = d.toDateString();
-      }
-    }
+function undoAll() {
+  history=[]; completedDays=0;
+  const days = document.querySelectorAll('.day');
+  days.forEach(d=>d.className='day');
+  updateProgress();
+  saveState();
+}
 
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("service-worker.js");
-    }
+function applyStartDate(){
+  const val=document.getElementById('startDate').value;
+  if(!val){ alert('Pick valid date'); return; }
+  startDate = new Date(val);
+  updateDates();
+  saveState();
+}
 
-    buildCalendar();
-  </script>
+function saveState() {
+  const daysData=[];
+  document.querySelectorAll('.day').forEach(d=>{
+    daysData.push({
+      status: d.className.replace('day','').trim(),
+      note: d.querySelector('textarea').value
+    });
+  });
+  const state={completedDays,startDate:startDate?startDate.toISOString():null,days:daysData};
+  localStorage.setItem('calendarState',JSON.stringify(state));
+}
+
+function loadState() {
+  const s=localStorage.getItem('calendarState');
+  if(!s) return;
+  const state=JSON.parse(s);
+  completedDays=state.completedDays||0;
+  startDate=state.startDate?new Date(state.startDate):new Date();
+  document.getElementById('startDate').value=startDate.toISOString().slice(0,10);
+  const dayDivs=document.querySelectorAll('.day');
+  state.days.forEach((d,i)=>{
+    dayDivs[i].className='day '+(d.status||'');
+    dayDivs[i].querySelector('textarea').value=d.note||'';
+  });
+  updateDates();
+  updateProgress();
+}
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");
+buildCalendar();
+</script>
 </body>
 </html>
